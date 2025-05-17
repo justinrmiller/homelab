@@ -639,7 +639,7 @@ def show_overview():
 
     with cols[0]:
         st.markdown("### Valkey")
-        st.markdown("[Documentation](https://valkey.io/documentation)")
+        st.markdown("[Documentation](https://valkey.io/docs/)")
 
     with cols[1]:
         st.markdown("### Kafka")

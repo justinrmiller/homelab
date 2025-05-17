@@ -109,7 +109,7 @@ homelab/
 
 ## 📚 Service Documentation
 
-- [Valkey Documentation](https://valkey.io/documentation)
+- [Valkey Documentation](https://valkey.io/docs/)
 - [Kafka Documentation](https://docs.confluent.io/platform/current/kafka/introduction.html)
 - [Qdrant Documentation](https://qdrant.tech/documentation/)
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/17/index.html)

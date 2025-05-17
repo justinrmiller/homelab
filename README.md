@@ -136,5 +136,5 @@ MIT License
 
 ## 👤 Author
 
-[justinrmiller](https://github.com/justinrmiller)
-[claude](https://www.anthropic.com/claude)
+- [justinrmiller](https://github.com/justinrmiller)
+- [claude](https://www.anthropic.com/claude)

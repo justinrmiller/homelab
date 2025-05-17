@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Streamlit app for interacting with Valkey, Kafka, Qdrant, and PostgreSQL services.
+Streamlit app for interacting with Valkey, Kafka, Qdrant, and PostgreSQL and MongoDB services.
 """
 
 import os
@@ -9,6 +9,7 @@ import json
 import random
 import pandas as pd
 import streamlit as st
+
 import plotly.express as px
 from typing import Tuple
 from datetime import datetime
@@ -18,7 +19,8 @@ import valkey
 
 # Kafka
 from confluent_kafka import Producer, Consumer, KafkaError
-from confluent_kafka.admin import AdminClient, NewTopic
+from typing import Tuple
+import requests
 
 # Qdrant
 from qdrant_client import QdrantClient
@@ -28,6 +30,10 @@ from qdrant_client.http import models
 import psycopg2
 from sqlalchemy import create_engine, text
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+
+# MongoDB
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 
 # Load environment variables (useful for local development)
 try:
@@ -39,8 +45,8 @@ except ImportError:
 
 # Set page configuration
 st.set_page_config(
-    page_title="Homelab Services Dashboard",
-    page_icon="🏠",
+    page_title="Services Dashboard",
+    page_icon="🧊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -57,6 +63,11 @@ POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")
 POSTGRES_DB = os.environ.get("POSTGRES_DB", "postgres")
 POSTGRES_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+MONGODB_HOST = os.environ.get("MONGODB_HOST", "localhost")
+MONGODB_PORT = int(os.environ.get("MONGODB_PORT", 27017))
+MONGODB_USER = os.environ.get("MONGODB_USER", "mongo")
+MONGODB_PASSWORD = os.environ.get("MONGODB_PASSWORD", "mongo")
+MONGODB_DB = os.environ.get("MONGODB_DB", "homelab")
 
 # Define colors for status indicators
 STATUS_COLORS = {
@@ -66,10 +77,11 @@ STATUS_COLORS = {
 }
 
 # Sidebar for service selection
-st.sidebar.title("Homelab Dashboard")
+st.sidebar.title("Services Dashboard")
+
 service_option = st.sidebar.radio(
     "Select Service",
-    ["Overview", "Valkey", "Kafka", "Qdrant", "PostgreSQL"]
+    ["Overview", "Valkey", "Kafka", "Qdrant",  "PostgreSQL", "MongoDB"]
 )
 
 
@@ -631,6 +643,73 @@ def show_overview():
         st.markdown("### PostgreSQL")
         st.markdown("[Documentation](https://www.postgresql.org/docs/17/index.html)")
 
+def check_mongodb_connection() -> Tuple[bool, str]:
+    """Check connection to MongoDB server."""
+    try:
+        uri = f"mongodb://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONGODB_HOST}:{MONGODB_PORT}/"
+        client = MongoClient(uri, serverSelectionTimeoutMS=3000)
+        client.admin.command('ping')
+        return True, "Connected successfully"
+    except PyMongoError as e:
+        return False, f"Connection error: {str(e)}"
+
+def interact_with_mongodb():
+    """Display MongoDB interaction UI."""
+    st.title("MongoDB Dashboard")
+
+    # Connection status
+    connected, message = check_mongodb_connection()
+    status = "🟢" if connected else "🔴"
+    st.write(f"Connection Status: {status} {message}")
+
+    if not connected:
+        st.error("Cannot connect to MongoDB. Please check if the service is running.")
+        return
+
+    uri = f"mongodb://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONGODB_HOST}:{MONGODB_PORT}/"
+    client = MongoClient(uri)
+    db = client[MONGODB_DB]
+
+    # List collections
+    if st.button("List Collections"):
+        collections = db.list_collection_names()
+        if collections:
+            st.write("Collections:")
+            for col in collections:
+                st.write(f"- {col}")
+        else:
+            st.info("No collections found.")
+
+    # Insert document
+    st.subheader("Insert Document")
+    collection_name = st.text_input("Collection Name", "test_collection")
+    document_json = st.text_area("Document (JSON)", '{"name": "example", "value": 123}')
+
+    if st.button("Insert Document"):
+        try:
+            doc = json.loads(document_json)
+            result = db[collection_name].insert_one(doc)
+            st.success(f"Inserted document with _id: {result.inserted_id}")
+        except Exception as e:
+            st.error(f"Error inserting document: {str(e)}")
+
+    # Query documents
+    st.subheader("Query Documents")
+    query_collection = st.text_input("Collection to Query", "test_collection")
+    query_json = st.text_area("Query (JSON)", '{}')
+    limit = st.number_input("Limit", min_value=1, value=5)
+
+    if st.button("Query"):
+        try:
+            query = json.loads(query_json)
+            docs = list(db[query_collection].find(query).limit(limit))
+            if docs:
+                st.write("Documents:")
+                st.json(docs)
+            else:
+                st.info("No documents found.")
+        except Exception as e:
+            st.error(f"Error querying documents: {str(e)}")
 
 # Main app logic
 if service_option == "Overview":
@@ -643,3 +722,8 @@ elif service_option == "Qdrant":
     interact_with_qdrant()
 elif service_option == "PostgreSQL":
     interact_with_postgres()
+elif service_option == "MongoDB":
+    interact_with_mongodb()
+else:
+    st.title("Overview")
+    st.write("Welcome to the Services Dashboard!")  

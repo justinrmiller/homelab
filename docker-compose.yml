@@ -102,6 +102,26 @@ services:
       timeout: 5s
       retries: 10
 
+  # Grafana OSS with SQLite
+  grafana:
+    image: grafana/grafana-oss:11.6.1
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_DATABASE_TYPE: sqlite3
+      GF_DATABASE_PATH: /var/lib/grafana/grafana.db
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      
   # Streamlit App
   streamlit:
     build:
@@ -114,6 +134,9 @@ services:
       - valkey
       - kafka
       - qdrant
+      - postgres
+      - grafana
+      - mongodb
     volumes:
       - ./streamlit:/app
     restart: unless-stopped
@@ -123,9 +146,41 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+      - GRAFANA_HOST=grafana
+      - GRAFANA_PORT=3000
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_USER=mongo
+      - MONGODB_PASSWORD=mongo
+      - MONGODB_DB=homelab
+
+      
+  mongodb:
+    image: mongo:8.0.9
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mongo
+    volumes:
+      - mongodb-data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   valkey-data:
   kafka-data:
   qdrant-data:
   postgres-data:
+  grafana-data:
+  mongodb-data:

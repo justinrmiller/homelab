@@ -618,7 +618,7 @@ def show_overview():
     }
 
     status_df = pd.DataFrame(status_data)
-    st.table(status_df)
+    st.dataframe(status_df, hide_index=True, use_container_width=True)
 
     # Show timestamp
     st.write(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

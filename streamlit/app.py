@@ -19,6 +19,7 @@ import valkey
 
 # Kafka
 from confluent_kafka import Producer, Consumer, KafkaError
+from confluent_kafka.admin import AdminClient, NewTopic
 from typing import Tuple
 import requests
 
@@ -595,17 +596,25 @@ def show_overview():
     kafka_connected, kafka_message = check_kafka_connection()
     qdrant_connected, qdrant_message = check_qdrant_connection()
     postgres_connected, postgres_message = check_postgres_connection()
+    mongodb_connected, mongodb_message = check_mongodb_connection()
 
     # Create a DataFrame for the status table
     status_data = {
-        "Service": ["Valkey", "Kafka", "Qdrant", "PostgreSQL"],
+        "Service": ["Valkey", "Kafka", "Qdrant", "PostgreSQL", "MongoDB"],
         "Status": [
             STATUS_COLORS["connected"] if valkey_connected else STATUS_COLORS["error"],
             STATUS_COLORS["connected"] if kafka_connected else STATUS_COLORS["error"],
             STATUS_COLORS["connected"] if qdrant_connected else STATUS_COLORS["error"],
-            STATUS_COLORS["connected"] if postgres_connected else STATUS_COLORS["error"]
+            STATUS_COLORS["connected"] if postgres_connected else STATUS_COLORS["error"],
+            STATUS_COLORS["connected"] if mongodb_connected else STATUS_COLORS["error"]
         ],
-        "Message": [valkey_message, kafka_message, qdrant_message, postgres_message]
+        "Message": [
+            valkey_message,
+            kafka_message,
+            qdrant_message,
+            postgres_message,
+            mongodb_message
+        ]
     }
 
     status_df = pd.DataFrame(status_data)
@@ -617,15 +626,16 @@ def show_overview():
     # Quick access links
     st.subheader("Quick Links")
     st.markdown("""
-    - **Valkey**: Redis-compatible in-memory database
-    - **Kafka**: Distributed event streaming platform
-    - **Qdrant**: Vector similarity search engine
-    - **PostgreSQL**: Advanced open-source relational database
+    - **Valkey**: Redis-compatible in-memory database  
+    - **Kafka**: Distributed event streaming platform  
+    - **Qdrant**: Vector similarity search engine  
+    - **PostgreSQL**: Advanced open-source relational database  
+    - **MongoDB**: NoSQL document-oriented database  
     """)
 
     # Additional resources
     st.subheader("Additional Resources")
-    cols = st.columns(4)
+    cols = st.columns(5)
 
     with cols[0]:
         st.markdown("### Valkey")
@@ -642,6 +652,10 @@ def show_overview():
     with cols[3]:
         st.markdown("### PostgreSQL")
         st.markdown("[Documentation](https://www.postgresql.org/docs/17/index.html)")
+
+    with cols[4]:
+        st.markdown("### MongoDB")
+        st.markdown("[Documentation](https://www.mongodb.com/docs/)")
 
 def check_mongodb_connection() -> Tuple[bool, str]:
     """Check connection to MongoDB server."""

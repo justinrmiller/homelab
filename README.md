@@ -43,6 +43,7 @@ docker compose up -d
 ```
 
 This launches:
+
 - Valkey
 - Kafka
 - Qdrant
@@ -65,6 +66,7 @@ You can run the dashboard inside Docker (recommended) or locally:
 The dashboard will be available at [http://localhost:8501](http://localhost:8501).
 
 **Locally**:
+
 ```sh
 cd streamlit
 streamlit run app.py
@@ -78,11 +80,13 @@ All service connection parameters are set via environment variables in `docker-c
 You can override them in your shell or with a `.env` file for local development.
 
 **Example environment variables:**
+
 - `VALKEY_HOST`, `VALKEY_PORT`
 - `KAFKA_BOOTSTRAP_SERVERS`
 - `QDRANT_HOST`, `QDRANT_PORT`
 - `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
 - `MONGODB_HOST`, `MONGODB_PORT`, `MONGODB_USER`, `MONGODB_PASSWORD`, `MONGODB_DB`
+- `HASURA_HOST`, `HASURA_PORT`
 
 ---
 
@@ -114,6 +118,7 @@ homelab/
 - [Qdrant Documentation](https://qdrant.tech/documentation/)
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/17/index.html)
 - [MongoDB Documentation](https://www.mongodb.com/docs/)
+- [Hasura Documentation](https://hasura.io/docs/latest/)
 
 ---
 

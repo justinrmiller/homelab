@@ -13,6 +13,7 @@ Easily monitor, manage, and experiment with these core open-source infrastructur
 - **Qdrant**: Manage collections, upload/search vectors.
 - **PostgreSQL**: List/create databases and tables, insert/query data, run custom SQL.
 - **MongoDB**: List collections, insert/query documents.
+- **Hasura**: Hasura GraphQL engine to interact with PostgreSQL.
 - **Quick Links**: Access official documentation for each service.
 
 ---
@@ -49,6 +50,7 @@ This launches:
 - Qdrant
 - PostgreSQL
 - MongoDB
+- Hasura
 - The Streamlit dashboard
 
 ### 2️⃣ Install Python Dependencies (for local Streamlit development)

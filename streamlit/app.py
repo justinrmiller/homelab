@@ -70,6 +70,12 @@ MONGODB_USER = os.environ.get("MONGODB_USER", "mongo")
 MONGODB_PASSWORD = os.environ.get("MONGODB_PASSWORD", "mongo")
 MONGODB_DB = os.environ.get("MONGODB_DB", "homelab")
 
+# Hasura
+HASURA_HOST = os.environ.get("HASURA_HOST", "host.docker.internal")
+HASURA_PORT = int(os.environ.get("HASURA_PORT", 8080))
+HASURA_GRAPHQL_URL = f"http://{HASURA_HOST}:{HASURA_PORT}/v1/graphql"
+HASURA_HEALTH_URL = f"http://{HASURA_HOST}:{HASURA_PORT}/healthz"
+
 # Define colors for status indicators
 STATUS_COLORS = {
     "connected": "🟢",
@@ -82,7 +88,7 @@ st.sidebar.title("Services Dashboard")
 
 service_option = st.sidebar.radio(
     "Select Service",
-    ["Overview", "Valkey", "Kafka", "Qdrant",  "PostgreSQL", "MongoDB"]
+    ["Overview", "Valkey", "Kafka", "Qdrant",  "PostgreSQL", "MongoDB", "Hasura"]
 )
 
 
@@ -597,23 +603,26 @@ def show_overview():
     qdrant_connected, qdrant_message = check_qdrant_connection()
     postgres_connected, postgres_message = check_postgres_connection()
     mongodb_connected, mongodb_message = check_mongodb_connection()
+    hasura_connected, hasura_message = check_hasura_connection()
 
     # Create a DataFrame for the status table
     status_data = {
-        "Service": ["Valkey", "Kafka", "Qdrant", "PostgreSQL", "MongoDB"],
+        "Service": ["Valkey", "Kafka", "Qdrant", "PostgreSQL", "MongoDB", "Hasura"],
         "Status": [
             STATUS_COLORS["connected"] if valkey_connected else STATUS_COLORS["error"],
             STATUS_COLORS["connected"] if kafka_connected else STATUS_COLORS["error"],
             STATUS_COLORS["connected"] if qdrant_connected else STATUS_COLORS["error"],
             STATUS_COLORS["connected"] if postgres_connected else STATUS_COLORS["error"],
-            STATUS_COLORS["connected"] if mongodb_connected else STATUS_COLORS["error"]
+            STATUS_COLORS["connected"] if mongodb_connected else STATUS_COLORS["error"],
+            STATUS_COLORS["connected"] if hasura_connected else STATUS_COLORS["error"]
         ],
         "Message": [
             valkey_message,
             kafka_message,
             qdrant_message,
             postgres_message,
-            mongodb_message
+            mongodb_message,
+            hasura_message
         ]
     }
 
@@ -631,11 +640,12 @@ def show_overview():
     - **Qdrant**: Vector similarity search engine  
     - **PostgreSQL**: Advanced open-source relational database  
     - **MongoDB**: NoSQL document-oriented database  
+    - **Hasura**: Instant GraphQL on PostgreSQL  
     """)
 
     # Additional resources
     st.subheader("Additional Resources")
-    cols = st.columns(5)
+    cols = st.columns(6)
 
     with cols[0]:
         st.markdown("### Valkey")
@@ -657,6 +667,11 @@ def show_overview():
         st.markdown("### MongoDB")
         st.markdown("[Documentation](https://www.mongodb.com/docs/)")
 
+    with cols[5]:
+        st.markdown("### Hasura")
+        st.markdown("[Documentation](https://hasura.io/docs/latest/)")
+
+
 def check_mongodb_connection() -> Tuple[bool, str]:
     """Check connection to MongoDB server."""
     try:
@@ -666,6 +681,7 @@ def check_mongodb_connection() -> Tuple[bool, str]:
         return True, "Connected successfully"
     except PyMongoError as e:
         return False, f"Connection error: {str(e)}"
+
 
 def interact_with_mongodb():
     """Display MongoDB interaction UI."""
@@ -725,6 +741,54 @@ def interact_with_mongodb():
         except Exception as e:
             st.error(f"Error querying documents: {str(e)}")
 
+
+# Function to check Hasura connection
+def check_hasura_connection() -> Tuple[bool, str]:
+    """Check connection to Hasura GraphQL Engine."""
+    try:
+        resp = requests.get(HASURA_HEALTH_URL, timeout=3)
+        if resp.status_code == 200:
+            return True, "Connected successfully"
+        return False, f"Healthcheck failed: {resp.status_code}"
+    except Exception as e:
+        return False, f"Connection error: {str(e)}"
+
+
+# Function to interact with Hasura
+def interact_with_hasura():
+    """Display Hasura interaction UI."""
+    st.title("Hasura Dashboard")
+
+    # Connection status
+    connected, message = check_hasura_connection()
+    status = STATUS_COLORS["connected"] if connected else STATUS_COLORS["error"]
+    st.write(f"Connection Status: {status} {message}")
+
+    if not connected:
+        st.error("Cannot connect to Hasura. Please check if the service is running.")
+        return
+
+    # GraphQL query UI
+    st.subheader("GraphQL Query")
+    default_query = '{\n  __schema {\n    queryType { name }\n  }\n}'
+    graphql_query = st.text_area("GraphQL Query", default_query, height=150)
+    variables = st.text_area("Variables (JSON)", "{}", height=68)
+
+    if st.button("Execute GraphQL Query"):
+        try:
+            payload = {
+                "query": graphql_query,
+                "variables": json.loads(variables or '{}')
+            }
+            resp = requests.post(HASURA_GRAPHQL_URL, json=payload, timeout=5)
+            if resp.status_code == 200:
+                st.json(resp.json())
+            else:
+                st.error(f"Query failed: {resp.status_code} {resp.text}")
+        except Exception as e:
+            st.error(f"Error executing GraphQL query: {str(e)}")
+
+
 # Main app logic
 if service_option == "Overview":
     show_overview()
@@ -738,6 +802,7 @@ elif service_option == "PostgreSQL":
     interact_with_postgres()
 elif service_option == "MongoDB":
     interact_with_mongodb()
+elif service_option == "Hasura":
+    interact_with_hasura()
 else:
-    st.title("Overview")
-    st.write("Welcome to the Services Dashboard!")  
+    st.warning("Please select a service from the sidebar.")

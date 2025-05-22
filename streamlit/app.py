@@ -70,6 +70,11 @@ MONGODB_USER = os.environ.get("MONGODB_USER", "mongo")
 MONGODB_PASSWORD = os.environ.get("MONGODB_PASSWORD", "mongo")
 MONGODB_DB = os.environ.get("MONGODB_DB", "homelab")
 
+# Open WebUI
+OPENWEBUI_HOST = os.environ.get("OPENWEBUI_HOST", "localhost")
+OPENWEBUI_PORT = int(os.environ.get("OPENWEBUI_PORT", 8082))
+OPENWEBUI_HEALTH_URL = f"http://{OPENWEBUI_HOST}:{OPENWEBUI_PORT}/healthz"
+
 # Hasura
 HASURA_HOST = os.environ.get("HASURA_HOST", "host.docker.internal")
 HASURA_PORT = int(os.environ.get("HASURA_PORT", 8080))
@@ -604,17 +609,19 @@ def show_overview():
     postgres_connected, postgres_message = check_postgres_connection()
     mongodb_connected, mongodb_message = check_mongodb_connection()
     hasura_connected, hasura_message = check_hasura_connection()
+    openwebui_connected, openwebui_message = check_openwebui_connection()
 
     # Create a DataFrame for the status table
     status_data = {
-        "Service": ["Valkey", "Kafka", "Qdrant", "PostgreSQL", "MongoDB", "Hasura"],
+        "Service": ["Valkey", "Kafka", "Qdrant", "PostgreSQL", "MongoDB", "Hasura", "Open WebUI"],
         "Status": [
             STATUS_COLORS["connected"] if valkey_connected else STATUS_COLORS["error"],
             STATUS_COLORS["connected"] if kafka_connected else STATUS_COLORS["error"],
             STATUS_COLORS["connected"] if qdrant_connected else STATUS_COLORS["error"],
             STATUS_COLORS["connected"] if postgres_connected else STATUS_COLORS["error"],
             STATUS_COLORS["connected"] if mongodb_connected else STATUS_COLORS["error"],
-            STATUS_COLORS["connected"] if hasura_connected else STATUS_COLORS["error"]
+            STATUS_COLORS["connected"] if hasura_connected else STATUS_COLORS["error"],
+            STATUS_COLORS["connected"] if openwebui_connected else STATUS_COLORS["error"]
         ],
         "Message": [
             valkey_message,
@@ -622,7 +629,8 @@ def show_overview():
             qdrant_message,
             postgres_message,
             mongodb_message,
-            hasura_message
+            hasura_message,
+            openwebui_message
         ]
     }
 
@@ -641,11 +649,12 @@ def show_overview():
     - **PostgreSQL**: Advanced open-source relational database  
     - **MongoDB**: NoSQL document-oriented database  
     - **Hasura**: Instant GraphQL on PostgreSQL  
+    - **Open WebUI**: Web-based user interface for managing services
     """)
 
     # Additional resources
     st.subheader("Additional Resources")
-    cols = st.columns(6)
+    cols = st.columns(7)
 
     with cols[0]:
         st.markdown("### Valkey")
@@ -670,6 +679,10 @@ def show_overview():
     with cols[5]:
         st.markdown("### Hasura")
         st.markdown("[Documentation](https://hasura.io/docs/latest/)")
+
+    with cols[6]:
+        st.markdown("### Open WebUI")
+        st.markdown("[Documentation](https://github.com/open-webui/open-webui)")
 
 
 def check_mongodb_connection() -> Tuple[bool, str]:
@@ -787,6 +800,17 @@ def interact_with_hasura():
                 st.error(f"Query failed: {resp.status_code} {resp.text}")
         except Exception as e:
             st.error(f"Error executing GraphQL query: {str(e)}")
+
+
+def check_openwebui_connection() -> Tuple[bool, str]:
+    """Check connection to Open WebUI."""
+    try:
+        resp = requests.get(OPENWEBUI_HEALTH_URL, timeout=3)
+        if resp.status_code == 200:
+            return True, "Connected successfully"
+        return False, f"Healthcheck failed: {resp.status_code}"
+    except Exception as e:
+        return False, f"Connection error: {str(e)}"
 
 
 # Main app logic

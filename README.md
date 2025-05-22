@@ -14,6 +14,7 @@ Easily monitor, manage, and experiment with these core open-source infrastructur
 - **PostgreSQL**: List/create databases and tables, insert/query data, run custom SQL.
 - **MongoDB**: List collections, insert/query documents.
 - **Hasura**: Hasura GraphQL engine to interact with PostgreSQL.
+- **Open WebUI**: Open-source web UI for local LLMs (Ollama backend required).
 - **Quick Links**: Access official documentation for each service.
 
 ---
@@ -52,6 +53,7 @@ This launches:
 - MongoDB
 - Hasura
 - The Streamlit dashboard
+- Open WebUI (for Ollama)
 
 ### 2️⃣ Install Python Dependencies (for local Streamlit development)
 
@@ -121,6 +123,8 @@ homelab/
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/17/index.html)
 - [MongoDB Documentation](https://www.mongodb.com/docs/)
 - [Hasura Documentation](https://hasura.io/docs/latest/)
+- [Open WebUI Documentation](https://github.com/open-webui/open-webui)
+- [Ollama Documentation](https://ollama.com/docs)
 
 ---
 
@@ -145,3 +149,10 @@ MIT License
 
 - [justinrmiller](https://github.com/justinrmiller)
 - [claude](https://www.anthropic.com/claude)
+
+---
+
+## ℹ️ Notes
+
+- **Open WebUI** is included for managing and chatting with local LLMs, but **Ollama** (the backend LLM server) must be installed separately on your machine. You can download and install Ollama from [https://ollama.com/](https://ollama.com/).
+- All model downloads and management are handled via the Ollama CLI or web interface, not from this dashboard.

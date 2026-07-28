@@ -1,0 +1,87 @@
+[project]
+name = "homelab-dashboard"
+version = "0.2.0"
+description = "Streamlit dashboard for local homelab services"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.43.57",
+    "confluent-kafka>=2.15.0",
+    "pandas>=3.0.5",
+    "plotly>=6.9.0",
+    "psycopg2-binary>=2.9.12",
+    "python-dotenv>=1.2.2",
+    "requests>=2.34.2",
+    "sqlalchemy>=2.0.51",
+    "streamlit>=1.60.0",
+    "valkey>=6.1.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.0",
+    "pytest-cov>=7.0.0",
+    "ruff",
+    "ty",
+]
+generators = [
+    "faker>=40.36.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dashboard"]
+
+[tool.uv]
+# generators is included so `ty` and the linter can see the seed scripts.
+default-groups = ["dev", "generators"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "N",    # pep8-naming
+    "RUF",  # ruff-specific
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally poke at private helpers and use long literal fixtures.
+"tests/*" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--cov=dashboard",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+    "--cov-fail-under=100",
+]
+
+[tool.coverage.run]
+source = ["dashboard"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.ty.src]
+include = ["dashboard", "tests", "generators"]

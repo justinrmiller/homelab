@@ -1,8 +1,8 @@
 # 🏡 Homelab Services Dashboard
 
 A unified Streamlit dashboard for interacting with a local **Valkey**, **Kafka**,
-**PostgreSQL**, **Hasura** and **S3** stack — monitor, manage and experiment with
-core open-source infrastructure from your browser.
+**Schema Registry**, **PostgreSQL**, **Hasura** and **S3** stack — monitor, manage
+and experiment with core open-source infrastructure from your browser.
 
 Runs under either **Docker** or **Podman**; the `Makefile` detects whichever you have.
 
@@ -13,10 +13,13 @@ Runs under either **Docker** or **Podman**; the `Makefile` detects whichever you
 - **Service Health Overview** — live connection status for every service.
 - **Valkey** — set/get keys, list all keys, inspect server info.
 - **Kafka** — list/create topics, produce and consume messages.
+- **Schema Registry** — browse subjects and versions, view schemas, register new
+  ones, delete subjects, see the global compatibility level.
 - **PostgreSQL** — list databases and tables, insert/query data, run custom SQL.
 - **Hasura** — GraphQL console against PostgreSQL.
 - **S3 (Floci)** — create/delete buckets, upload/download/delete objects,
   generate presigned URLs, against a local AWS emulator.
+- **Grafana** — ships with a pre-provisioned PostgreSQL datasource.
 
 ---
 
@@ -45,8 +48,11 @@ make ps            # service status
 make logs          # tail everything
 make logs SERVICE=kafka
 make down          # stop, keep data
-make clean         # stop and delete volumes
+make clean         # stop and DELETE ALL VOLUMES (prompts for confirmation)
 ```
+
+`make clean` is destructive — it lists exactly what will be lost and requires
+you to type `yes`. Use `make clean FORCE=1` to skip the prompt in scripts.
 
 `make help` lists every target. `make engine` shows which container engine was
 detected — override with `CONTAINER_ENGINE=docker` or `CONTAINER_ENGINE=podman`.
@@ -65,7 +71,7 @@ The ones that matter most:
 |---|---|
 | `BIND_ADDR` | Interface published ports bind to. `127.0.0.1` keeps services off your LAN. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Postgres credentials. |
-| `HASURA_GRAPHQL_ADMIN_SECRET` | **Required in practice** — see Security below. |
+| `HASURA_GRAPHQL_ADMIN_SECRET` | **Required — no default.** The stack refuses to start without it. |
 | `GF_SECURITY_ADMIN_USER` / `GF_SECURITY_ADMIN_PASSWORD` | Grafana login. |
 | `AWS_ENDPOINT_URL` | Floci endpoint. Set automatically inside compose. |
 
@@ -79,9 +85,11 @@ network. Before running it anywhere else:
 - **Set `BIND_ADDR=127.0.0.1`** unless you genuinely need LAN access. The default
   (`0.0.0.0`) publishes Postgres, Kafka, Grafana, Hasura and the S3 emulator to
   every host on your network.
-- **Set `HASURA_GRAPHQL_ADMIN_SECRET`.** The compose default is the literal
-  string `changeme`. Without a real secret, anyone who can reach port 8080 has
-  full GraphQL read/write access to PostgreSQL.
+- **`HASURA_GRAPHQL_ADMIN_SECRET` has no default and is required.** Compose
+  cannot even parse `docker-compose.yml` without it, so the stack fails fast
+  rather than coming up silently insecure — without a secret, anyone who can
+  reach port 8080 has full GraphQL read/write access to PostgreSQL. `make up`
+  additionally rejects the `change-me` placeholder from `.env.example`.
 - **Change `POSTGRES_PASSWORD` and `GF_SECURITY_ADMIN_PASSWORD`.**
 - The PostgreSQL page includes a **raw SQL console** by design. Guided controls
   validate table names, but the console runs whatever you type.
@@ -108,12 +116,12 @@ Dependencies are managed with **uv** and pinned in `uv.lock`. Add one with
 
 ### Testing
 
-153 tests at **100% statement and branch coverage**, enforced by
+188 tests at **100% statement and branch coverage**, enforced by
 `--cov-fail-under=100` in `pyproject.toml`. No containers required — every
 backend is faked.
 
 - `tests/test_config.py`, `test_sql.py`, `test_s3.py`, `test_health.py`,
-  `test_clients.py` — unit tests for the pure modules.
+  `test_clients.py`, `test_schema_registry.py` — unit tests for the pure modules.
 - `tests/test_app.py`, `test_app_interactions.py` — full page rendering and
   button handlers via Streamlit's `AppTest` harness.
 
@@ -132,8 +140,12 @@ homelab/
 │   ├── clients.py           # client factories
 │   ├── health.py            # connection checks
 │   ├── s3.py                # S3 operations
+│   ├── schema_registry.py   # Schema Registry REST client
 │   ├── sql.py               # identifier validation
 │   └── Dockerfile
+├── grafana/
+│   ├── provisioning/        # datasource + dashboard providers
+│   └── dashboards/          # dashboard JSON, auto-loaded
 ├── generators/
 │   └── s3_data_generator.py # seed Floci with sample objects
 └── tests/
@@ -158,10 +170,34 @@ uv run python generators/s3_data_generator.py --bucket sample-data --objects 100
 | Kafka | `confluentinc/cp-kafka:8.2.2` | 9092, 9094 | KRaft mode, no ZooKeeper |
 | Schema Registry | `confluentinc/cp-schema-registry:8.2.2` | 8081 | |
 | PostgreSQL | `postgres:18.4` | 5432 | |
-| Grafana | `grafana/grafana-oss:13.0.2` | 3000 | Not yet wired to a datasource |
+| Grafana | `grafana/grafana-oss:13.0.2` | 3000 | Provisioned datasource + dashboard |
 | Hasura | `hasura/graphql-engine:v2.49.5-ce` | 8080 | GraphQL over PostgreSQL |
 | Floci | `floci/floci:1.5.33` | 4566 | Local AWS emulator (S3) |
 | Dashboard | built from `dashboard/Dockerfile` | 8501 | |
+
+### Grafana
+
+Open <http://localhost:3000> and log in with `GF_SECURITY_ADMIN_USER` /
+`GF_SECURITY_ADMIN_PASSWORD` from your `.env` (defaults `admin` / `admin`).
+
+Both the datasource and the dashboards are provisioned from files, so there's
+nothing to click through on first boot:
+
+- **Datasource** — `grafana/provisioning/datasources/postgres.yml` defines a
+  PostgreSQL datasource (uid `homelab-postgres`) pointing at the `postgres`
+  service, credentials interpolated from the environment.
+- **Dashboards** — `grafana/provisioning/dashboards/dashboards.yml` loads every
+  JSON file in `grafana/dashboards/` into a **Homelab** folder.
+
+Shipped dashboard: **PostgreSQL Overview** (`Dashboards → Homelab`) — connection
+count, database size, cache hit ratio, uptime, connection and transaction graphs,
+and a per-database table. It reads `pg_stat_database`, so it works against any
+PostgreSQL with no extensions required.
+
+To add your own: drop a dashboard JSON into `grafana/dashboards/` and restart
+Grafana (`make restart`), or build it in the UI and use *Share → Export* to save
+the JSON there. `allowUiUpdates: true` means UI edits stick until the file on
+disk changes.
 
 ### Using Floci from your own code
 
@@ -198,6 +234,12 @@ needs Floci's `localhost.floci.io` DNS shim.
 
 ## 🛠️ Troubleshooting
 
+**`HASURA_GRAPHQL_ADMIN_SECRET` ... required` on any compose command**
+
+That variable has no default, so Compose cannot parse `docker-compose.yml`
+without it — including for `down` and `logs`. Create `.env` from
+`.env.example` and set a real value; `make up` will do the copy for you.
+
 **A service won't connect**
 
 ```sh
@@ -226,6 +268,7 @@ The healthcheck allows for this via `start_period`; give it a moment.
 
 - [Valkey](https://valkey.io/docs/)
 - [Kafka](https://docs.confluent.io/platform/current/kafka/introduction.html)
+- [Schema Registry](https://docs.confluent.io/platform/current/schema-registry/index.html)
 - [PostgreSQL](https://www.postgresql.org/docs/18/index.html)
 - [Hasura](https://hasura.io/docs/latest/)
 - [Floci](https://floci.io/floci/services/s3/)

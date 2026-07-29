@@ -39,6 +39,10 @@ DOCS = {
         "Distributed event streaming platform",
         "https://docs.confluent.io/platform/current/kafka/introduction.html",
     ),
+    "Schema Registry": (
+        "Schema storage and compatibility for Kafka",
+        "https://docs.confluent.io/platform/current/schema-registry/index.html",
+    ),
     "PostgreSQL": (
         "Advanced open-source relational database",
         "https://www.postgresql.org/docs/18/index.html",
@@ -60,6 +64,11 @@ def valkey_client():
 @st.cache_resource
 def kafka_admin():
     return clients.make_kafka_admin(CONFIG.kafka)
+
+
+@st.cache_resource
+def schema_registry_client():
+    return clients.make_schema_registry_client(CONFIG.schema_registry)
 
 
 @st.cache_resource
@@ -264,6 +273,86 @@ def interact_with_kafka() -> None:
         finally:
             if consumer is not None:
                 consumer.close()
+
+
+# --- Schema Registry ------------------------------------------------------
+
+SAMPLE_AVRO_SCHEMA = json.dumps(
+    {
+        "type": "record",
+        "name": "User",
+        "fields": [
+            {"name": "id", "type": "int"},
+            {"name": "name", "type": "string"},
+        ],
+    },
+    indent=2,
+)
+
+
+def interact_with_schema_registry() -> None:
+    st.title("Schema Registry Dashboard")
+    if not show_status(health.check_schema_registry(CONFIG.schema_registry), "Schema Registry"):
+        return
+
+    client = schema_registry_client()
+
+    try:
+        level = client.compatibility_level()
+        st.caption(f"Global compatibility level: **{level}**")
+    except Exception as exc:
+        st.warning(f"Could not read compatibility level: {exc}")
+
+    st.subheader("Subjects")
+    try:
+        subjects = client.list_subjects()
+    except Exception as exc:
+        st.error(f"Error listing subjects: {exc}")
+        return
+
+    if subjects:
+        for subject in subjects:
+            st.write(f"- {subject}")
+    else:
+        st.info("No subjects registered yet. Register one below.")
+
+    if subjects:
+        st.subheader("Inspect Schema")
+        subject = st.selectbox("Subject", subjects, key="sr_subject")
+        try:
+            versions = client.list_versions(subject)
+        except Exception as exc:
+            st.error(f"Error listing versions: {exc}")
+            versions = []
+
+        if versions:
+            version = st.selectbox("Version", versions, key="sr_version")
+            if st.button("View Schema"):
+                try:
+                    detail = client.get_version(subject, version)
+                    st.write(f"Schema ID **{detail.schema_id}** · type **{detail.schema_type}**")
+                    st.code(detail.pretty_schema(), language="json")
+                except Exception as exc:
+                    st.error(f"Error fetching schema: {exc}")
+
+        if st.button("Delete Subject"):
+            try:
+                deleted = client.delete_subject(subject)
+                st.success(f"Deleted subject '{subject}' (versions: {deleted})")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Error deleting subject: {exc}")
+
+    st.subheader("Register Schema")
+    new_subject = st.text_input("Subject Name", "test-topic-value")
+    schema_text = st.text_area("Schema (Avro JSON)", SAMPLE_AVRO_SCHEMA, height=200)
+    if st.button("Register Schema"):
+        try:
+            schema_id = client.register_schema(new_subject, schema_text)
+            st.success(f"Registered schema for '{new_subject}' with ID {schema_id}")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Error registering schema: {exc}")
 
 
 # --- PostgreSQL -----------------------------------------------------------
@@ -537,6 +626,7 @@ PAGES = {
     "Overview": show_overview,
     "Valkey": interact_with_valkey,
     "Kafka": interact_with_kafka,
+    "Schema Registry": interact_with_schema_registry,
     "PostgreSQL": interact_with_postgres,
     "Hasura": interact_with_hasura,
     "S3 (Floci)": interact_with_s3,

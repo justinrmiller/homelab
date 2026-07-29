@@ -16,6 +16,7 @@ from dashboard.config import (
     KafkaConfig,
     PostgresConfig,
     S3Config,
+    SchemaRegistryConfig,
     ValkeyConfig,
 )
 
@@ -23,6 +24,8 @@ SERVICE_ENV_VARS = [
     "VALKEY_HOST",
     "VALKEY_PORT",
     "KAFKA_BOOTSTRAP_SERVERS",
+    "SCHEMA_REGISTRY_HOST",
+    "SCHEMA_REGISTRY_PORT",
     "POSTGRES_HOST",
     "POSTGRES_PORT",
     "POSTGRES_USER",
@@ -51,6 +54,7 @@ def config() -> Config:
     return Config(
         valkey=ValkeyConfig(host="valkey", port=6379),
         kafka=KafkaConfig(bootstrap_servers="kafka:9092"),
+        schema_registry=SchemaRegistryConfig(host="schema-registry", port=8081),
         postgres=PostgresConfig(
             host="postgres",
             port=5432,

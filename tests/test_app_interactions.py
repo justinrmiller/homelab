@@ -27,7 +27,14 @@ def _clear_streamlit_caches():
 
 @pytest.fixture(autouse=True)
 def _all_healthy(monkeypatch):
-    for name in ("check_valkey", "check_kafka", "check_postgres", "check_hasura", "check_s3"):
+    for name in (
+        "check_valkey",
+        "check_kafka",
+        "check_schema_registry",
+        "check_postgres",
+        "check_hasura",
+        "check_s3",
+    ):
         monkeypatch.setattr(
             health, name, lambda cfg, **kw: health.HealthResult(True, "Connected successfully")
         )
@@ -47,6 +54,8 @@ def click(at: AppTest, label: str) -> AppTest:
 
 def messages(at: AppTest) -> str:
     parts = [m.value for m in at.markdown]
+    # st.caption is a separate element type, not folded into markdown.
+    parts += [c.value for c in at.caption]
     parts += [s.value for s in at.success]
     parts += [i.value for i in at.info]
     parts += [w.value for w in at.warning]
@@ -300,6 +309,166 @@ def test_kafka_consume_reports_consumer_errors(fake_kafka, monkeypatch):
 
     assert not at.exception
     assert "Consumer error" in messages(at)
+
+
+# --- Schema Registry ------------------------------------------------------
+
+
+class FakeRegistry:
+    def __init__(self, subjects=("test-topic-value",), level="BACKWARD"):
+        self._subjects = list(subjects)
+        self._level = level
+        self.registered: list[tuple[str, str]] = []
+        self.deleted: list[str] = []
+
+    def compatibility_level(self):
+        if self._level is None:
+            raise RuntimeError("config unavailable")
+        return self._level
+
+    def list_subjects(self):
+        return list(self._subjects)
+
+    def list_versions(self, subject):
+        return [1, 2]
+
+    def get_version(self, subject, version="latest"):
+        from dashboard.schema_registry import SchemaVersion
+
+        return SchemaVersion(
+            subject=subject,
+            version=int(version),
+            schema_id=77,
+            schema='{"type":"record","name":"User","fields":[]}',
+        )
+
+    def register_schema(self, subject, schema, schema_type="AVRO"):
+        self.registered.append((subject, schema))
+        return 101
+
+    def delete_subject(self, subject):
+        self.deleted.append(subject)
+        return [1, 2]
+
+
+@pytest.fixture
+def fake_registry(monkeypatch):
+    registry = FakeRegistry()
+    monkeypatch.setattr("dashboard.clients.make_schema_registry_client", lambda cfg: registry)
+    return registry
+
+
+def test_schema_registry_lists_subjects_and_level(fake_registry):
+    at = open_page("Schema Registry")
+
+    assert not at.exception
+    body = messages(at)
+    assert "test-topic-value" in body
+    assert "BACKWARD" in body
+
+
+def test_schema_registry_handles_missing_compatibility_level(monkeypatch):
+    monkeypatch.setattr(
+        "dashboard.clients.make_schema_registry_client",
+        lambda cfg: FakeRegistry(level=None),
+    )
+    at = open_page("Schema Registry")
+
+    assert not at.exception
+    assert "Could not read compatibility level" in messages(at)
+
+
+def test_schema_registry_no_subjects(monkeypatch):
+    monkeypatch.setattr(
+        "dashboard.clients.make_schema_registry_client",
+        lambda cfg: FakeRegistry(subjects=()),
+    )
+    at = open_page("Schema Registry")
+
+    assert not at.exception
+    assert "No subjects registered yet" in messages(at)
+
+
+def test_schema_registry_list_subjects_error(monkeypatch):
+    registry = FakeRegistry()
+
+    def boom():
+        raise RuntimeError("registry down")
+
+    monkeypatch.setattr(registry, "list_subjects", boom)
+    monkeypatch.setattr("dashboard.clients.make_schema_registry_client", lambda cfg: registry)
+
+    at = open_page("Schema Registry")
+
+    assert not at.exception
+    assert "registry down" in messages(at)
+
+
+def test_schema_registry_view_schema(fake_registry):
+    at = click(open_page("Schema Registry"), "View Schema")
+
+    assert not at.exception
+    assert any("record" in c.value for c in at.code)
+    assert "77" in messages(at)
+
+
+def test_schema_registry_view_schema_error(fake_registry, monkeypatch):
+    def boom(subject, version="latest"):
+        raise RuntimeError("schema gone")
+
+    monkeypatch.setattr(fake_registry, "get_version", boom)
+    at = click(open_page("Schema Registry"), "View Schema")
+
+    assert not at.exception
+    assert "schema gone" in messages(at)
+
+
+def test_schema_registry_list_versions_error(fake_registry, monkeypatch):
+    def boom(subject):
+        raise RuntimeError("no versions")
+
+    monkeypatch.setattr(fake_registry, "list_versions", boom)
+    at = open_page("Schema Registry")
+
+    assert not at.exception
+    assert "no versions" in messages(at)
+
+
+def test_schema_registry_register_schema(fake_registry):
+    at = click(open_page("Schema Registry"), "Register Schema")
+
+    assert not at.exception
+    assert fake_registry.registered[0][0] == "test-topic-value"
+    assert "101" in messages(at)
+
+
+def test_schema_registry_register_schema_error(fake_registry, monkeypatch):
+    def boom(subject, schema, schema_type="AVRO"):
+        raise RuntimeError("incompatible schema")
+
+    monkeypatch.setattr(fake_registry, "register_schema", boom)
+    at = click(open_page("Schema Registry"), "Register Schema")
+
+    assert not at.exception
+    assert "incompatible schema" in messages(at)
+
+
+def test_schema_registry_delete_subject(fake_registry):
+    at = click(open_page("Schema Registry"), "Delete Subject")
+
+    assert not at.exception
+    assert fake_registry.deleted == ["test-topic-value"]
+
+
+def test_schema_registry_delete_subject_error(fake_registry, monkeypatch):
+    def boom(subject):
+        raise RuntimeError("subject in use")
+
+    monkeypatch.setattr(fake_registry, "delete_subject", boom)
+    at = click(open_page("Schema Registry"), "Delete Subject")
+
+    assert not at.exception
+    assert "subject in use" in messages(at)
 
 
 # --- PostgreSQL -----------------------------------------------------------

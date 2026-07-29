@@ -37,6 +37,16 @@ class KafkaConfig:
 
 
 @dataclass(frozen=True)
+class SchemaRegistryConfig:
+    host: str
+    port: int
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+
+@dataclass(frozen=True)
 class PostgresConfig:
     host: str
     port: int
@@ -88,6 +98,7 @@ class S3Config:
 class Config:
     valkey: ValkeyConfig
     kafka: KafkaConfig
+    schema_registry: SchemaRegistryConfig
     postgres: PostgresConfig
     hasura: HasuraConfig
     s3: S3Config
@@ -102,6 +113,10 @@ def load_config() -> Config:
         ),
         kafka=KafkaConfig(
             bootstrap_servers=_env("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+        ),
+        schema_registry=SchemaRegistryConfig(
+            host=_env("SCHEMA_REGISTRY_HOST", "localhost"),
+            port=_env_int("SCHEMA_REGISTRY_PORT", 8081),
         ),
         postgres=PostgresConfig(
             host=_env("POSTGRES_HOST", "localhost"),

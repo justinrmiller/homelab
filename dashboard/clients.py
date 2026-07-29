@@ -14,6 +14,7 @@ if TYPE_CHECKING:
         KafkaConfig,
         PostgresConfig,
         S3Config,
+        SchemaRegistryConfig,
         ValkeyConfig,
     )
 
@@ -52,6 +53,12 @@ def make_kafka_producer(cfg: KafkaConfig) -> Any:
     from confluent_kafka import Producer
 
     return Producer({"bootstrap.servers": cfg.bootstrap_servers})
+
+
+def make_schema_registry_client(cfg: SchemaRegistryConfig) -> Any:
+    from dashboard.schema_registry import SchemaRegistryClient
+
+    return SchemaRegistryClient(cfg.base_url, timeout=DEFAULT_TIMEOUT)
 
 
 def make_postgres_engine(cfg: PostgresConfig) -> Any:

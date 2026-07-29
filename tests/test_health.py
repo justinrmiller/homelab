@@ -64,6 +64,26 @@ def test_kafka_unreachable(config):
     assert "Connection error" in result.message
 
 
+# --- Schema Registry ------------------------------------------------------
+
+
+def test_schema_registry_connected(config):
+    result = health.check_schema_registry(
+        config.schema_registry,
+        factory=lambda cfg: SimpleNamespace(list_subjects=lambda: ["a", "b", "c"]),
+    )
+
+    assert result.ok
+    assert "Subjects: 3" in result.message
+
+
+def test_schema_registry_unreachable(config):
+    result = health.check_schema_registry(config.schema_registry, factory=_Boom())
+
+    assert not result.ok
+    assert "Connection error" in result.message
+
+
 # --- PostgreSQL -----------------------------------------------------------
 
 
@@ -162,14 +182,31 @@ def test_s3_unreachable(config):
 # --- Aggregate ------------------------------------------------------------
 
 
+ALL_CHECKS = (
+    "check_valkey",
+    "check_kafka",
+    "check_schema_registry",
+    "check_postgres",
+    "check_hasura",
+    "check_s3",
+)
+
+
 def test_check_all_reports_every_service(config, monkeypatch):
     ok = health.HealthResult(True, "fine")
-    for name in ("check_valkey", "check_kafka", "check_postgres", "check_hasura", "check_s3"):
+    for name in ALL_CHECKS:
         monkeypatch.setattr(health, name, lambda cfg, _ok=ok, **kw: _ok)
 
     results = health.check_all(config)
 
-    assert set(results) == {"Valkey", "Kafka", "PostgreSQL", "Hasura", "S3 (Floci)"}
+    assert set(results) == {
+        "Valkey",
+        "Kafka",
+        "Schema Registry",
+        "PostgreSQL",
+        "Hasura",
+        "S3 (Floci)",
+    }
     assert all(r.ok for r in results.values())
 
 
@@ -177,7 +214,7 @@ def test_check_all_surfaces_failures(config, monkeypatch):
     monkeypatch.setattr(
         health, "check_valkey", lambda cfg, **kw: health.HealthResult(False, "down")
     )
-    for name in ("check_kafka", "check_postgres", "check_hasura", "check_s3"):
+    for name in ALL_CHECKS[1:]:
         monkeypatch.setattr(health, name, lambda cfg, **kw: health.HealthResult(True, "fine"))
 
     results = health.check_all(config)

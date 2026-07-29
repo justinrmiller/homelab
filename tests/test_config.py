@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from dashboard.config import HasuraConfig, PostgresConfig, _env, _env_int, load_config
+from dashboard.config import (
+    HasuraConfig,
+    PostgresConfig,
+    SchemaRegistryConfig,
+    _env,
+    _env_int,
+    load_config,
+)
 
 
 def test_defaults_when_environment_is_empty(clean_env):
@@ -11,6 +18,8 @@ def test_defaults_when_environment_is_empty(clean_env):
     assert config.valkey.host == "localhost"
     assert config.valkey.port == 6379
     assert config.kafka.bootstrap_servers == "localhost:9092"
+    assert config.schema_registry.host == "localhost"
+    assert config.schema_registry.port == 8081
     assert config.postgres.host == "localhost"
     assert config.hasura.port == 8080
     assert config.s3.endpoint_url == "http://localhost:4566"
@@ -59,6 +68,11 @@ def test_non_integer_port_raises_a_clear_error(clean_env):
 def test_postgres_uri():
     cfg = PostgresConfig(host="postgres", port=5432, user="app", password="pw", database="homelab")
     assert cfg.uri == "postgresql://app:pw@postgres:5432/homelab"
+
+
+def test_schema_registry_base_url():
+    cfg = SchemaRegistryConfig(host="schema-registry", port=8081)
+    assert cfg.base_url == "http://schema-registry:8081"
 
 
 def test_hasura_urls_and_headers():

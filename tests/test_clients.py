@@ -14,6 +14,16 @@ def test_valkey_client_targets_configured_host(config):
     assert kwargs["socket_timeout"] == clients.DEFAULT_TIMEOUT
 
 
+def test_schema_registry_client_targets_configured_base_url(config):
+    from dashboard.schema_registry import SchemaRegistryClient
+
+    client = clients.make_schema_registry_client(config.schema_registry)
+
+    assert isinstance(client, SchemaRegistryClient)
+    assert client.base_url == "http://schema-registry:8081"
+    assert client.timeout == clients.DEFAULT_TIMEOUT
+
+
 def test_postgres_engine_uses_config_uri(config):
     engine = clients.make_postgres_engine(config.postgres)
 

@@ -17,6 +17,7 @@ from dashboard.config import (
     KafkaConfig,
     PostgresConfig,
     S3Config,
+    SchemaRegistryConfig,
     ValkeyConfig,
 )
 
@@ -54,6 +55,17 @@ def check_kafka(
     try:
         metadata = factory(cfg).list_topics(timeout=clients.DEFAULT_TIMEOUT)
         return HealthResult(True, f"Connected successfully. Brokers: {len(metadata.brokers)}")
+    except Exception as exc:
+        return HealthResult(False, f"Connection error: {exc}")
+
+
+def check_schema_registry(
+    cfg: SchemaRegistryConfig,
+    factory: Callable[[SchemaRegistryConfig], Any] = clients.make_schema_registry_client,
+) -> HealthResult:
+    try:
+        subjects = factory(cfg).list_subjects()
+        return HealthResult(True, f"Connected successfully. Subjects: {len(subjects)}")
     except Exception as exc:
         return HealthResult(False, f"Connection error: {exc}")
 
@@ -106,6 +118,7 @@ def check_all(config: Config) -> dict[str, HealthResult]:
     return {
         "Valkey": check_valkey(config.valkey),
         "Kafka": check_kafka(config.kafka),
+        "Schema Registry": check_schema_registry(config.schema_registry),
         "PostgreSQL": check_postgres(config.postgres),
         "Hasura": check_hasura(config.hasura),
         "S3 (Floci)": check_s3(config.s3),

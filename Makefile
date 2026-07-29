@@ -55,8 +55,28 @@ endif
 
 # --- Stack ----------------------------------------------------------------
 
+.PHONY: env-check
+env-check: ## Verify .env exists and required secrets are set
+	@if [ ! -f .env ]; then \
+		cp .env.example .env; \
+		echo "Created .env from .env.example." >&2; \
+		echo "error: set a real HASURA_GRAPHQL_ADMIN_SECRET in .env, then re-run." >&2; \
+		exit 1; \
+	fi
+	@if ! grep -qE '^HASURA_GRAPHQL_ADMIN_SECRET=.+' .env; then \
+		echo "error: HASURA_GRAPHQL_ADMIN_SECRET is not set in .env." >&2; \
+		echo "       Hasura refuses to start without it: port 8080 would otherwise be" >&2; \
+		echo "       unauthenticated read/write access to Postgres over GraphQL." >&2; \
+		exit 1; \
+	fi
+	@if grep -qE '^HASURA_GRAPHQL_ADMIN_SECRET=(change-me|changeme)[[:space:]]*$$' .env; then \
+		echo "error: HASURA_GRAPHQL_ADMIN_SECRET is still the placeholder value." >&2; \
+		echo "       Set a real secret in .env before starting the stack." >&2; \
+		exit 1; \
+	fi
+
 .PHONY: up
-up: require-engine ## Start the full stack in the background
+up: require-engine env-check ## Start the full stack in the background
 	$(COMPOSE) up -d
 
 .PHONY: down
@@ -87,7 +107,25 @@ config: require-engine ## Validate and render the compose file
 	$(COMPOSE) config
 
 .PHONY: clean
-clean: require-engine ## Stop the stack and delete its volumes (destroys data)
+clean: require-engine ## Stop the stack and PERMANENTLY DELETE its volumes
+	@echo
+	@echo "  WARNING: this runs 'compose down -v' and permanently deletes every"
+	@echo "  volume for this stack. All data is lost:"
+	@echo
+	@echo "    postgres-18-data   all databases, including Hasura metadata"
+	@echo "    kafka-data         all topics and messages"
+	@echo "    valkey-data        all keys"
+	@echo "    grafana-data       dashboards, users, saved settings"
+	@echo "    floci-data         all S3 buckets and objects"
+	@echo
+	@echo "  To stop the stack without losing data, use 'make down' instead."
+	@echo
+	@if [ "$(FORCE)" = "1" ]; then \
+		echo "  FORCE=1 set, skipping confirmation."; \
+	else \
+		read -r -p "  Type 'yes' to permanently delete this data: " reply; \
+		if [ "$$reply" != "yes" ]; then echo "  Aborted. Nothing was deleted."; exit 1; fi; \
+	fi
 	$(COMPOSE) down -v
 
 # --- Development ----------------------------------------------------------

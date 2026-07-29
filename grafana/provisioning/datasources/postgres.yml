@@ -1,0 +1,26 @@
+# Provisioned at startup by Grafana. Edits here take effect on container
+# restart; `deleteDatasources` clears the previous definition first so renames
+# in this file do not leave orphans behind.
+apiVersion: 1
+
+deleteDatasources:
+  - name: PostgreSQL
+    orgId: 1
+
+datasources:
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    orgId: 1
+    uid: homelab-postgres
+    url: postgres:5432
+    user: ${POSTGRES_USER}
+    database: ${POSTGRES_DB}
+    isDefault: true
+    editable: true
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1800
+      timescaledb: false

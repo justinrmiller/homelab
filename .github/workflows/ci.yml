@@ -59,8 +59,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # HASURA_GRAPHQL_ADMIN_SECRET has no default in docker-compose.yml, so
+      # compose cannot even parse the file without it. This is a throwaway
+      # value for validation only; nothing is started.
       - name: Validate compose config
         run: docker compose config --quiet
+        env:
+          HASURA_GRAPHQL_ADMIN_SECRET: ci-validation-only
 
       - name: Build dashboard image
         run: docker compose build streamlit
+        env:
+          HASURA_GRAPHQL_ADMIN_SECRET: ci-validation-only

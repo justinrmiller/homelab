@@ -13,7 +13,22 @@ from streamlit.testing.v1 import AppTest
 from dashboard import health
 
 APP_PATH = "dashboard/app.py"
-ALL_SERVICES = ["Valkey", "Kafka", "PostgreSQL", "Hasura", "S3 (Floci)"]
+ALL_SERVICES = [
+    "Valkey",
+    "Kafka",
+    "Schema Registry",
+    "PostgreSQL",
+    "Hasura",
+    "S3 (Floci)",
+]
+ALL_CHECKS = (
+    "check_valkey",
+    "check_kafka",
+    "check_schema_registry",
+    "check_postgres",
+    "check_hasura",
+    "check_s3",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -26,7 +41,7 @@ def _clear_streamlit_caches():
 
 @pytest.fixture
 def all_healthy(monkeypatch):
-    for name in ("check_valkey", "check_kafka", "check_postgres", "check_hasura", "check_s3"):
+    for name in ALL_CHECKS:
         monkeypatch.setattr(
             health, name, lambda cfg, **kw: health.HealthResult(True, "Connected successfully")
         )
@@ -34,7 +49,7 @@ def all_healthy(monkeypatch):
 
 @pytest.fixture
 def all_down(monkeypatch):
-    for name in ("check_valkey", "check_kafka", "check_postgres", "check_hasura", "check_s3"):
+    for name in ALL_CHECKS:
         monkeypatch.setattr(
             health, name, lambda cfg, **kw: health.HealthResult(False, "Connection error: refused")
         )

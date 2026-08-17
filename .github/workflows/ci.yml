@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.0"
+
+jobs:
+  python:
+    name: Lint, type-check and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check --output-format=github .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      # ty is pre-1.0; surface its findings without failing the build.
+      - name: Type-check (advisory)
+        run: uv run ty check
+        continue-on-error: true
+
+      - name: Test
+        run: uv run pytest
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: warn
+
+  compose:
+    name: Validate compose file
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # HASURA_GRAPHQL_ADMIN_SECRET has no default in docker-compose.yml, so
+      # compose cannot even parse the file without it. This is a throwaway
+      # value for validation only; nothing is started.
+      - name: Validate compose config
+        run: docker compose config --quiet
+        env:
+          HASURA_GRAPHQL_ADMIN_SECRET: ci-validation-only
+
+      - name: Build dashboard image
+        run: docker compose build streamlit
+        env:
+          HASURA_GRAPHQL_ADMIN_SECRET: ci-validation-only

@@ -1,0 +1,17 @@
+# Loads dashboard JSON from /etc/grafana/dashboards. That path is deliberately
+# separate from this provisioning directory — Grafana would otherwise try to
+# parse this YAML file as a dashboard.
+apiVersion: 1
+
+providers:
+  - name: Homelab
+    orgId: 1
+    folder: Homelab
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    # Edits made in the UI survive until the file on disk changes.
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

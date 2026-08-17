@@ -1,10 +1,16 @@
+# Homelab stack. Start with `make up` (auto-detects Docker or Podman).
+#
+# Ports bind to BIND_ADDR, which defaults to 0.0.0.0. Set BIND_ADDR=127.0.0.1
+# in .env to keep these services off the LAN — several of them ship with
+# development credentials.
+
 services:
   # Valkey - Redis-compatible in-memory database
   valkey:
-    image: valkey/valkey:8.1.1
+    image: valkey/valkey:9.1.1
     container_name: valkey
     ports:
-      - "6379:6379"
+      - "${BIND_ADDR:-0.0.0.0}:6379:6379"
     volumes:
       - valkey-data:/data
     command: valkey-server --appendonly yes
@@ -15,14 +21,13 @@ services:
       timeout: 5s
       retries: 3
 
-  # Using KRaft mode for Kafka 4.0+ (no ZooKeeper needed)
-  # Confluent Kafka
+  # Confluent Kafka in KRaft mode (no ZooKeeper)
   kafka:
-    image: confluentinc/cp-kafka:7.9.0
+    image: confluentinc/cp-kafka:8.2.2
     container_name: kafka
     ports:
-      - "9092:9092"
-      - "9094:9094"
+      - "${BIND_ADDR:-0.0.0.0}:9092:9092"
+      - "${BIND_ADDR:-0.0.0.0}:9094:9094"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_NODE_ID: 1
@@ -41,20 +46,22 @@ services:
     restart: unless-stopped
     healthcheck:
       test: kafka-topics --bootstrap-server kafka:9092 --list || exit 1
-      interval: 30s
+      interval: 15s
       timeout: 10s
-      retries: 3
+      retries: 10
+      start_period: 30s
     volumes:
       - kafka-data:/var/lib/kafka/data
 
   # Schema Registry for Kafka
   schema-registry:
-    image: confluentinc/cp-schema-registry:7.9.0
+    image: confluentinc/cp-schema-registry:8.2.2
     container_name: schema-registry
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     ports:
-      - "8081:8081"
+      - "${BIND_ADDR:-0.0.0.0}:8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
@@ -64,131 +71,84 @@ services:
       test: curl --silent --fail http://localhost:8081/subjects || exit 1
       interval: 30s
       timeout: 10s
-      retries: 3
-
-  # Qdrant - Vector Database
-  qdrant:
-    image: qdrant/qdrant:v1.14.0
-    container_name: qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant-data:/qdrant/storage
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:6333/readiness"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 30s
 
   postgres:
-    image: postgres:17
-    restart: always
+    image: postgres:18.4
+    container_name: postgres
+    restart: unless-stopped
     environment:
-      - POSTGRES_USER
-      - POSTGRES_PASSWORD
-      - POSTGRES_DB
-      - POSTGRES_NON_ROOT_USER
-      - POSTGRES_NON_ROOT_PASSWORD
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_NON_ROOT_USER: ${POSTGRES_NON_ROOT_USER:-}
+      POSTGRES_NON_ROOT_PASSWORD: ${POSTGRES_NON_ROOT_PASSWORD:-}
     ports:
-      - "5432:5432"
+      - "${BIND_ADDR:-0.0.0.0}:5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh
+      # Two deliberate changes from the PG17 setup:
+      #  1. A new volume, because a PG17 data directory will not start under
+      #     PG18. The old `postgres-data` volume is left untouched; remove it
+      #     with `docker volume rm homelab_postgres-data` when you're ready.
+      #  2. Mounted at /var/lib/postgresql, not /var/lib/postgresql/data. The
+      #     18+ images keep data in a major-version subdirectory and refuse to
+      #     start if they find a volume at the old path.
+      - postgres-18-data:/var/lib/postgresql
+      - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
       interval: 5s
       timeout: 5s
       retries: 10
 
   # Grafana OSS with SQLite
   grafana:
-    image: grafana/grafana-oss:11.6.1
+    image: grafana/grafana-oss:13.0.2
     container_name: grafana
     ports:
-      - "3000:3000"
+      - "${BIND_ADDR:-0.0.0.0}:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       GF_DATABASE_TYPE: sqlite3
       GF_DATABASE_PATH: /var/lib/grafana/grafana.db
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      # Interpolated into provisioning/datasources/postgres.yml at startup.
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      
-  # Streamlit App
-  streamlit:
-    build:
-      context: ./streamlit
-      dockerfile: Dockerfile
-    container_name: streamlit
-    ports:
-      - "8501:8501"
-    depends_on:
-      - valkey
-      - kafka
-      - qdrant
-      - postgres
-      - grafana
-      - mongodb
-    volumes:
-      - ./streamlit:/app
-    restart: unless-stopped
-    environment:
-      - VALKEY_HOST=valkey
-      - VALKEY_PORT=6379
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=postgres
-      - GRAFANA_HOST=grafana
-      - GRAFANA_PORT=3000
-      - MONGODB_HOST=mongodb
-      - MONGODB_PORT=27017
-      - MONGODB_USER=mongo
-      - MONGODB_PASSWORD=mongo
-      - MONGODB_DB=homelab
-
-      
-  mongodb:
-    image: mongo:8.0.9
-    container_name: mongodb
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: mongo
-      MONGO_INITDB_ROOT_PASSWORD: mongo
-    volumes:
-      - mongodb-data:/data/db
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   # Hasura GraphQL Engine
   hasura:
-    image: hasura/graphql-engine:v2.48.0
+    image: hasura/graphql-engine:v2.49.5-ce
     container_name: hasura
     ports:
-      - "8080:8080"
+      - "${BIND_ADDR:-0.0.0.0}:8080:8080"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
-      HASURA_GRAPHQL_DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
+      HASURA_GRAPHQL_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postgres}
       HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
-      HASURA_GRAPHQL_DEV_MODE: "true"
+      # Dev mode leaks internal error detail to unauthenticated callers.
+      HASURA_GRAPHQL_DEV_MODE: "false"
+      # Deliberately has no default: an unset secret leaves port 8080 as
+      # unauthenticated read/write access to Postgres over GraphQL, so the
+      # stack refuses to start rather than come up silently insecure.
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET:?not set — copy .env.example to .env and set a real value}
       HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
     restart: unless-stopped
     healthcheck:
@@ -197,10 +157,77 @@ services:
       timeout: 10s
       retries: 3
 
+  # Floci - local AWS emulator (S3 and friends) on a single endpoint
+  floci:
+    image: floci/floci:1.5.33
+    container_name: floci
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:4566:4566"
+    volumes:
+      - floci-data:/app/data
+    environment:
+      # Floci embeds this hostname in response URLs; without it other
+      # containers get back "localhost" and cannot follow them.
+      FLOCI_HOSTNAME: floci
+      FLOCI_STORAGE_MODE: persistent
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+    restart: unless-stopped
+
+  # Streamlit dashboard
+  streamlit:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: streamlit
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:8501:8501"
+    depends_on:
+      valkey:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      hasura:
+        condition: service_healthy
+      floci:
+        condition: service_started
+    volumes:
+      # Mounted under the app dir, not over it, so the image's .venv survives.
+      - ./dashboard:/app/dashboard
+    restart: unless-stopped
+    environment:
+      VALKEY_HOST: valkey
+      VALKEY_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_HOST: schema-registry
+      SCHEMA_REGISTRY_PORT: 8081
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      # Previously unset, so the app fell back to host.docker.internal and
+      # could not reach Hasura on Linux hosts.
+      HASURA_HOST: hasura
+      HASURA_PORT: 8080
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET:?not set — copy .env.example to .env and set a real value}
+      AWS_ENDPOINT_URL: http://floci:4566
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
 volumes:
   valkey-data:
   kafka-data:
-  qdrant-data:
-  postgres-data:
+  postgres-18-data:
   grafana-data:
-  mongodb-data:
+  floci-data:

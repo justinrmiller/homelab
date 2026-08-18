@@ -32,6 +32,7 @@ def _all_healthy(monkeypatch):
         "check_kafka",
         "check_schema_registry",
         "check_postgres",
+        "check_grafana",
         "check_hasura",
         "check_s3",
     ):

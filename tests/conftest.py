@@ -1,7 +1,7 @@
 """Shared fixtures and fakes.
 
-The dashboard talks to five network services; these fakes stand in for them so
-the suite runs with no containers up.
+The dashboard talks to every service in the compose stack; these fakes stand in
+for them so the suite runs with no containers up.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import pytest
 
 from dashboard.config import (
     Config,
+    GrafanaConfig,
     HasuraConfig,
     KafkaConfig,
     PostgresConfig,
@@ -31,6 +32,9 @@ SERVICE_ENV_VARS = [
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
     "POSTGRES_DB",
+    "GRAFANA_HOST",
+    "GRAFANA_PORT",
+    "GRAFANA_PUBLIC_URL",
     "HASURA_HOST",
     "HASURA_PORT",
     "HASURA_GRAPHQL_ADMIN_SECRET",
@@ -62,6 +66,7 @@ def config() -> Config:
             password="secret",
             database="postgres",
         ),
+        grafana=GrafanaConfig(host="grafana", port=3000, public_url="http://localhost:3000"),
         hasura=HasuraConfig(host="hasura", port=8080, admin_secret="topsecret"),
         s3=S3Config(
             endpoint_url="http://floci:4566",

@@ -190,6 +190,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      grafana:
+        condition: service_healthy
       hasura:
         condition: service_healthy
       floci:
@@ -209,6 +211,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      GRAFANA_HOST: grafana
+      GRAFANA_PORT: 3000
+      # The health check talks to grafana:3000 over the compose network; this is
+      # the address to hand the user's browser, which cannot resolve that name.
+      GRAFANA_PUBLIC_URL: ${GRAFANA_PUBLIC_URL:-http://localhost:3000}
       # Previously unset, so the app fell back to host.docker.internal and
       # could not reach Hasura on Linux hosts.
       HASURA_HOST: hasura

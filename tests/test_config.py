@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from dashboard.config import (
+    GrafanaConfig,
     HasuraConfig,
     PostgresConfig,
     SchemaRegistryConfig,
@@ -21,6 +22,9 @@ def test_defaults_when_environment_is_empty(clean_env):
     assert config.schema_registry.host == "localhost"
     assert config.schema_registry.port == 8081
     assert config.postgres.host == "localhost"
+    assert config.grafana.host == "localhost"
+    assert config.grafana.port == 3000
+    assert config.grafana.public_url == "http://localhost:3000"
     assert config.hasura.port == 8080
     assert config.s3.endpoint_url == "http://localhost:4566"
     assert config.s3.region == "us-east-1"
@@ -87,3 +91,22 @@ def test_hasura_urls_and_headers():
 def test_hasura_headers_empty_without_secret():
     cfg = HasuraConfig(host="hasura", port=8080, admin_secret="")
     assert cfg.headers == {}
+
+
+def test_grafana_urls():
+    cfg = GrafanaConfig(host="grafana", port=3000, public_url="http://localhost:3000")
+
+    assert cfg.base_url == "http://grafana:3000"
+    assert cfg.health_url == "http://grafana:3000/api/health"
+
+
+def test_grafana_public_url_is_independent_of_host_and_port(clean_env):
+    """The browser cannot resolve the compose hostname the health check uses."""
+    clean_env.setenv("GRAFANA_HOST", "grafana")
+    clean_env.setenv("GRAFANA_PORT", "3000")
+    clean_env.setenv("GRAFANA_PUBLIC_URL", "https://grafana.homelab.lan")
+
+    grafana = load_config().grafana
+
+    assert grafana.health_url == "http://grafana:3000/api/health"
+    assert grafana.public_url == "https://grafana.homelab.lan"

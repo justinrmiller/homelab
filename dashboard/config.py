@@ -60,6 +60,26 @@ class PostgresConfig:
 
 
 @dataclass(frozen=True)
+class GrafanaConfig:
+    host: str
+    port: int
+    public_url: str
+    """Browser-facing URL.
+
+    Kept separate from host/port because those address Grafana from inside the
+    compose network (``grafana:3000``), which the user's browser cannot resolve.
+    """
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+    @property
+    def health_url(self) -> str:
+        return f"{self.base_url}/api/health"
+
+
+@dataclass(frozen=True)
 class HasuraConfig:
     host: str
     port: int
@@ -100,6 +120,7 @@ class Config:
     kafka: KafkaConfig
     schema_registry: SchemaRegistryConfig
     postgres: PostgresConfig
+    grafana: GrafanaConfig
     hasura: HasuraConfig
     s3: S3Config
 
@@ -124,6 +145,11 @@ def load_config() -> Config:
             user=_env("POSTGRES_USER", "postgres"),
             password=_env("POSTGRES_PASSWORD", "postgres"),
             database=_env("POSTGRES_DB", "postgres"),
+        ),
+        grafana=GrafanaConfig(
+            host=_env("GRAFANA_HOST", "localhost"),
+            port=_env_int("GRAFANA_PORT", 3000),
+            public_url=_env("GRAFANA_PUBLIC_URL", "http://localhost:3000"),
         ),
         hasura=HasuraConfig(
             host=_env("HASURA_HOST", "localhost"),

@@ -116,6 +116,106 @@ def test_postgres_unreachable(config):
     assert "Connection error" in result.message
 
 
+# --- Grafana --------------------------------------------------------------
+
+
+def _grafana_response(status_code=200, body=None, json_error=None):
+    def json_():
+        if json_error is not None:
+            raise json_error
+        return body
+
+    return SimpleNamespace(status_code=status_code, json=json_)
+
+
+def test_grafana_connected(config):
+    captured = {}
+
+    def getter(url, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return _grafana_response(body={"database": "ok", "version": "13.0.2"})
+
+    result = health.check_grafana(config.grafana, getter=getter)
+
+    assert result.ok
+    assert "Version: 13.0.2" in result.message
+    # Health is checked over the compose network, not the browser-facing URL.
+    assert captured["url"] == "http://grafana:3000/api/health"
+    assert captured["kwargs"]["timeout"] == 5
+
+
+def test_grafana_missing_version_field(config):
+    result = health.check_grafana(
+        config.grafana, getter=lambda url, **kw: _grafana_response(body={"database": "ok"})
+    )
+
+    assert result.ok
+    assert "Version: ?" in result.message
+
+
+def test_grafana_reports_broken_database(config):
+    """Grafana answers HTTP 200 even when its own database is failing."""
+    result = health.check_grafana(
+        config.grafana,
+        getter=lambda url, **kw: _grafana_response(body={"database": "failing", "version": "13"}),
+    )
+
+    assert not result.ok
+    assert result.message == "Database: failing"
+
+
+def test_grafana_missing_database_field(config):
+    result = health.check_grafana(
+        config.grafana, getter=lambda url, **kw: _grafana_response(body={"version": "13"})
+    )
+
+    assert not result.ok
+    assert result.message == "Database: unknown"
+
+
+def test_grafana_non_200(config):
+    result = health.check_grafana(
+        config.grafana, getter=lambda url, **kw: _grafana_response(status_code=503)
+    )
+
+    assert not result.ok
+    assert "503" in result.message
+
+
+def test_grafana_non_json_body(config):
+    """A proxy or wrong port can return 200 with HTML."""
+    result = health.check_grafana(
+        config.grafana,
+        getter=lambda url, **kw: _grafana_response(json_error=ValueError("not json")),
+    )
+
+    assert not result.ok
+    assert "not json" in result.message
+
+
+def test_grafana_unreachable(config):
+    def getter(url, **kwargs):
+        raise TimeoutError("timed out")
+
+    result = health.check_grafana(config.grafana, getter=getter)
+
+    assert not result.ok
+    assert "timed out" in result.message
+
+
+def test_grafana_uses_requests_by_default(config, monkeypatch):
+    import requests
+
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda url, **kw: _grafana_response(body={"database": "ok", "version": "13.0.2"}),
+    )
+
+    assert health.check_grafana(config.grafana).ok
+
+
 # --- Hasura ---------------------------------------------------------------
 
 
@@ -187,6 +287,7 @@ ALL_CHECKS = (
     "check_kafka",
     "check_schema_registry",
     "check_postgres",
+    "check_grafana",
     "check_hasura",
     "check_s3",
 )
@@ -204,6 +305,7 @@ def test_check_all_reports_every_service(config, monkeypatch):
         "Kafka",
         "Schema Registry",
         "PostgreSQL",
+        "Grafana",
         "Hasura",
         "S3 (Floci)",
     }

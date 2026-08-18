@@ -47,9 +47,17 @@ DOCS = {
         "Advanced open-source relational database",
         "https://www.postgresql.org/docs/18/index.html",
     ),
+    "Grafana": (
+        "Dashboards over PostgreSQL, provisioned from files",
+        "https://grafana.com/docs/grafana/latest/",
+    ),
     "Hasura": ("Instant GraphQL on PostgreSQL", "https://hasura.io/docs/latest/"),
     "S3 (Floci)": ("Local AWS emulator", "https://floci.io/floci/services/s3/"),
 }
+
+# Services with a UI of their own, linked from the overview. Grafana is driven
+# entirely from its own interface, so it gets a link rather than a page here.
+SERVICE_URLS = {"Grafana": CONFIG.grafana.public_url}
 
 
 # --- Cached clients -------------------------------------------------------
@@ -110,7 +118,11 @@ def show_overview() -> None:
 
     st.subheader("Services")
     for name, (blurb, url) in DOCS.items():
-        st.markdown(f"- **{name}** — {blurb} · [docs]({url})")
+        line = f"- **{name}** — {blurb} · [docs]({url})"
+        service_url = SERVICE_URLS.get(name)
+        if service_url:
+            line += f" · [open]({service_url})"
+        st.markdown(line)
 
 
 # --- Valkey ---------------------------------------------------------------

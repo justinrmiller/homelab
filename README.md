@@ -19,7 +19,8 @@ Runs under either **Docker** or **Podman**; the `Makefile` detects whichever you
 - **Hasura** — GraphQL console against PostgreSQL.
 - **S3 (Floci)** — create/delete buckets, upload/download/delete objects,
   generate presigned URLs, against a local AWS emulator.
-- **Grafana** — ships with a pre-provisioned PostgreSQL datasource.
+- **Grafana** — ships with a pre-provisioned PostgreSQL datasource. Monitored on
+  the overview, which links out to Grafana's own UI.
 
 ---
 
@@ -73,6 +74,7 @@ The ones that matter most:
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Postgres credentials. |
 | `HASURA_GRAPHQL_ADMIN_SECRET` | **Required — no default.** The stack refuses to start without it. |
 | `GF_SECURITY_ADMIN_USER` / `GF_SECURITY_ADMIN_PASSWORD` | Grafana login. |
+| `GRAFANA_PUBLIC_URL` | Where the dashboard's Grafana link points your browser. Defaults to `http://localhost:3000`. |
 | `AWS_ENDPOINT_URL` | Floci endpoint. Set automatically inside compose. |
 
 ---
@@ -116,7 +118,7 @@ Dependencies are managed with **uv** and pinned in `uv.lock`. Add one with
 
 ### Testing
 
-188 tests at **100% statement and branch coverage**, enforced by
+202 tests at **100% statement and branch coverage**, enforced by
 `--cov-fail-under=100` in `pyproject.toml`. No containers required — every
 backend is faked.
 
@@ -178,7 +180,15 @@ uv run python generators/s3_data_generator.py --bucket sample-data --objects 100
 ### Grafana
 
 Open <http://localhost:3000> and log in with `GF_SECURITY_ADMIN_USER` /
-`GF_SECURITY_ADMIN_PASSWORD` from your `.env` (defaults `admin` / `admin`).
+`GF_SECURITY_ADMIN_PASSWORD` from your `.env` (defaults `admin` / `admin`). The
+dashboard's overview links there too, and reports Grafana's health alongside the
+other services — it polls `/api/health`, which needs no credentials and reports
+whether Grafana's own database is healthy, not just whether the port answers.
+
+Grafana has no page of its own in the dashboard: it *is* a UI, so there is
+nothing useful for Streamlit to wrap. If you browse the stack from another
+machine or through a proxy, set `GRAFANA_PUBLIC_URL` so the link resolves —
+the health check keeps using the in-network address either way.
 
 Both the datasource and the dashboards are provisioned from files, so there's
 nothing to click through on first boot:

@@ -13,6 +13,7 @@ from typing import Any
 from dashboard import clients
 from dashboard.config import (
     Config,
+    GrafanaConfig,
     HasuraConfig,
     KafkaConfig,
     PostgresConfig,
@@ -85,6 +86,29 @@ def check_postgres(
         return HealthResult(False, f"Connection error: {exc}")
 
 
+def check_grafana(
+    cfg: GrafanaConfig,
+    getter: Callable[..., Any] | None = None,
+) -> HealthResult:
+    if getter is None:
+        import requests
+
+        getter = requests.get
+    try:
+        resp = getter(cfg.health_url, timeout=clients.DEFAULT_TIMEOUT)
+        if resp.status_code != 200:
+            return HealthResult(False, f"Healthcheck failed: {resp.status_code}")
+        # /api/health needs no auth and reports the state of Grafana's own
+        # database, which can be broken while the HTTP server still answers.
+        body = resp.json()
+        database = body.get("database", "unknown")
+        if database != "ok":
+            return HealthResult(False, f"Database: {database}")
+        return HealthResult(True, f"Connected successfully. Version: {body.get('version', '?')}")
+    except Exception as exc:
+        return HealthResult(False, f"Connection error: {exc}")
+
+
 def check_hasura(
     cfg: HasuraConfig,
     getter: Callable[..., Any] | None = None,
@@ -120,6 +144,7 @@ def check_all(config: Config) -> dict[str, HealthResult]:
         "Kafka": check_kafka(config.kafka),
         "Schema Registry": check_schema_registry(config.schema_registry),
         "PostgreSQL": check_postgres(config.postgres),
+        "Grafana": check_grafana(config.grafana),
         "Hasura": check_hasura(config.hasura),
         "S3 (Floci)": check_s3(config.s3),
     }

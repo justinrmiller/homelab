@@ -51,6 +51,19 @@ endif
 ifeq ($(ENGINE_NAME),podman)
 	@$(ENGINE) machine inspect >/dev/null 2>&1 || { \
 		echo "note: no podman machine detected; run 'podman machine start' if on macOS." >&2; }
+	@# Rootful and rootless podman keep entirely separate containers, images and
+	@# volumes. With more than one connection it is easy to start the stack on
+	@# one and then run ps/logs against the other, which looks like the stack
+	@# vanished. Name the active one so that mismatch is visible.
+	@conns=$$($(ENGINE) system connection list --format '{{.Name}}' 2>/dev/null | wc -l | tr -d ' '); \
+	if [ "$${conns:-0}" -gt 1 ]; then \
+		active=$${CONTAINER_CONNECTION:-$$($(ENGINE) system connection list \
+			--format '{{.Name}} {{.Default}}' 2>/dev/null \
+			| awk '$$2 == "true" {print $$1}')}; \
+		echo "note: podman has $$conns connections; using '$$active'." >&2; \
+		echo "      A stack started on a different connection is invisible here." >&2; \
+		echo "      Pin one for every target with CONTAINER_CONNECTION=<name>." >&2; \
+	fi
 endif
 
 # --- Stack ----------------------------------------------------------------
@@ -77,11 +90,25 @@ env-check: ## Verify .env exists and required secrets are set
 
 .PHONY: up
 up: require-engine env-check ## Start the full stack in the background
-	$(COMPOSE) up -d
+	# Always --build. compose reuses whatever dashboard image already exists,
+	# and the ./dashboard bind mount does not save you: an image built before
+	# the streamlit/ -> dashboard/ rename runs /app/app.py, which the mount
+	# never covers, so the container happily serves pre-rename code. Layer
+	# caching makes this near-free unless pyproject.toml or uv.lock changed.
+	# NO_BUILD=1 skips it.
+	$(COMPOSE) up -d $(if $(filter 1,$(NO_BUILD)),,--build)
 
 .PHONY: down
 down: require-engine ## Stop the stack (volumes preserved)
-	$(COMPOSE) down
+	@$(COMPOSE) down || { \
+		echo "" >&2; \
+		echo "note: teardown failed; retrying once." >&2; \
+		echo "      Rootless Podman intermittently cannot kill the shared network" >&2; \
+		echo "      helper it uses for the stack ('rootless netns: kill network" >&2; \
+		echo "      process: permission denied'). The retry normally succeeds; if" >&2; \
+		echo "      it does not, restart the VM with 'podman machine stop && start'." >&2; \
+		$(COMPOSE) down; \
+	}
 
 .PHONY: restart
 restart: down up ## Restart the stack

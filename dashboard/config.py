@@ -8,6 +8,20 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
+
+
+def app_version() -> str:
+    """Version of the installed dashboard package.
+
+    Rendered in the sidebar so a container serving a stale image is visible at
+    a glance. The image pins the code that actually runs; the ./dashboard bind
+    mount only layers over part of the app directory.
+    """
+    try:
+        return version("homelab-dashboard")
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def _env(name: str, default: str) -> str:

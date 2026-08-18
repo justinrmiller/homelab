@@ -9,6 +9,7 @@ from dashboard.config import (
     SchemaRegistryConfig,
     _env,
     _env_int,
+    app_version,
     load_config,
 )
 
@@ -110,3 +111,21 @@ def test_grafana_public_url_is_independent_of_host_and_port(clean_env):
 
     assert grafana.health_url == "http://grafana:3000/api/health"
     assert grafana.public_url == "https://grafana.homelab.lan"
+
+
+def test_app_version_matches_installed_metadata():
+    from importlib import metadata
+
+    assert app_version() == metadata.version("homelab-dashboard")
+
+
+def test_app_version_falls_back_when_package_is_not_installed(monkeypatch):
+    """Running the script straight from a checkout, with nothing pip-installed."""
+    from importlib.metadata import PackageNotFoundError
+
+    def missing(_name):
+        raise PackageNotFoundError("homelab-dashboard")
+
+    monkeypatch.setattr("dashboard.config.version", missing)
+
+    assert app_version() == "unknown"

@@ -14,7 +14,7 @@ import streamlit as st
 from sqlalchemy import text
 
 from dashboard import clients, health, s3
-from dashboard.config import load_config
+from dashboard.config import app_version, load_config
 from dashboard.sql import is_read_only, safe_identifier
 
 try:
@@ -649,6 +649,9 @@ def main() -> None:
     st.sidebar.title("Services Dashboard")
     choice = st.sidebar.radio("Select Service", list(PAGES))
     PAGES[choice]()
+    # A version that lags the repo means the container is running a stale
+    # image; rebuild with `make up` (which always builds) or `make build`.
+    st.sidebar.caption(f"dashboard v{app_version()}")
 
 
 main()

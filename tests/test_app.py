@@ -187,3 +187,13 @@ def test_hasura_page_quiet_when_secret_is_set(all_healthy, monkeypatch):
 
     assert not at.exception
     assert not any("no admin secret" in w.value for w in at.warning)
+
+
+def test_sidebar_shows_the_running_version(all_healthy):
+    """A version lagging the repo is how a stale container image gives itself away."""
+    from importlib import metadata
+
+    at = run_app()
+
+    expected = f"dashboard v{metadata.version('homelab-dashboard')}"
+    assert any(c.value == expected for c in at.sidebar.caption)

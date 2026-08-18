@@ -118,7 +118,7 @@ Dependencies are managed with **uv** and pinned in `uv.lock`. Add one with
 
 ### Testing
 
-202 tests at **100% statement and branch coverage**, enforced by
+205 tests at **100% statement and branch coverage**, enforced by
 `--cov-fail-under=100` in `pyproject.toml`. No containers required — every
 backend is faked.
 
@@ -271,6 +271,46 @@ config: `DOCKER_CONFIG=$(mktemp -d) make up`.
 
 **Kafka is unhealthy on first boot** — it can take ~30s to elect a controller.
 The healthcheck allows for this via `start_period`; give it a moment.
+
+**The dashboard shows services that no longer exist (Qdrant, MongoDB)**
+
+The container is running a stale image. Compose reuses whatever dashboard image
+it finds, and the `./dashboard` bind mount does not protect you: an image built
+before the `streamlit/` → `dashboard/` rename starts `/app/app.py`, a path the
+mount never covers, so the old code runs regardless of what is in your checkout.
+
+`make up` always passes `--build`, so this should not recur. The sidebar footer
+shows the running version — if it lags `pyproject.toml`, the image is stale:
+
+```sh
+make build && make up
+```
+
+Set `NO_BUILD=1` to skip the rebuild when you know the image is current.
+
+**`rootless netns: kill network process: permission denied` on `make down`**
+
+Rootless Podman runs one shared network helper for the stack and kills it when
+the last container goes away. Occasionally that kill fails: the helper already
+died without Podman clearing its state, and the recorded PID now belongs to
+another (often root-owned) process. It is a cleanup failure, not data loss.
+
+`make down` retries once, which normally clears it. If it persists:
+
+```sh
+podman machine stop && podman machine start
+```
+
+**`make ps` shows nothing but the stack is running**
+
+Rootful and rootless Podman keep completely separate containers, images and
+volumes, and a machine can have a connection for each. Starting the stack on
+one and inspecting the other looks exactly like the stack vanished. Every target
+prints which connection it is using when more than one exists; pin it with:
+
+```sh
+CONTAINER_CONNECTION=podman-machine-default make ps
+```
 
 ---
 

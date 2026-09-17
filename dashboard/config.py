@@ -147,6 +147,8 @@ def load_config() -> Config:
             port=_env_int("VALKEY_PORT", 6379),
         ),
         kafka=KafkaConfig(
+            # The host-facing listener. Inside compose the dashboard is given
+            # kafka:29092 instead, which is not published to the host.
             bootstrap_servers=_env("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
         ),
         schema_registry=SchemaRegistryConfig(

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 DEFAULT_TIMEOUT = 5
 
 
-def make_valkey_client(cfg: ValkeyConfig, timeout: int = DEFAULT_TIMEOUT) -> Any:
+def make_valkey_client(cfg: ValkeyConfig, timeout: float = DEFAULT_TIMEOUT) -> Any:
     import valkey
 
     return valkey.Valkey(host=cfg.host, port=cfg.port, socket_timeout=timeout)

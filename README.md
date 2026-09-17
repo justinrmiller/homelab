@@ -70,12 +70,13 @@ The ones that matter most:
 
 | Variable | Purpose |
 |---|---|
-| `BIND_ADDR` | Interface published ports bind to. `127.0.0.1` keeps services off your LAN. |
+| `BIND_ADDR` | Interface published ports bind to. Ships as `0.0.0.0` (LAN-reachable); `127.0.0.1` keeps services on this host. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Postgres credentials. |
 | `HASURA_GRAPHQL_ADMIN_SECRET` | **Required — no default.** The stack refuses to start without it. |
 | `GF_SECURITY_ADMIN_USER` / `GF_SECURITY_ADMIN_PASSWORD` | Grafana login. |
 | `GRAFANA_PUBLIC_URL` | Where the dashboard's Grafana link points your browser. Defaults to `http://localhost:3000`. |
 | `AWS_ENDPOINT_URL` | Floci endpoint. Set automatically inside compose. |
+| `KAFKA_ADVERTISED_HOST` | Address Kafka tells clients to reconnect to. Only needed to reach Kafka from another machine. |
 
 ---
 
@@ -84,9 +85,11 @@ The ones that matter most:
 This stack ships with development defaults and is intended for a trusted
 network. Before running it anywhere else:
 
-- **Set `BIND_ADDR=127.0.0.1`** unless you genuinely need LAN access. The default
-  (`0.0.0.0`) publishes Postgres, Kafka, Grafana, Hasura and the S3 emulator to
-  every host on your network.
+- **`BIND_ADDR` ships as `0.0.0.0`**, which publishes Postgres, Kafka, Valkey,
+  Grafana, Hasura and the S3 emulator to every host that can route to you. That
+  is the point on a home LAN, and it is what the benchmarks need — but change
+  the passwords below before you rely on it, and set `BIND_ADDR=127.0.0.1` to
+  keep the stack on this machine only.
 - **`HASURA_GRAPHQL_ADMIN_SECRET` has no default and is required.** Compose
   cannot even parse `docker-compose.yml` without it, so the stack fails fast
   rather than coming up silently insecure — without a secret, anyone who can
@@ -118,14 +121,17 @@ Dependencies are managed with **uv** and pinned in `uv.lock`. Add one with
 
 ### Testing
 
-205 tests at **100% statement and branch coverage**, enforced by
-`--cov-fail-under=100` in `pyproject.toml`. No containers required — every
+278 tests at **100% statement and branch coverage** of `dashboard/`, enforced
+by `--cov-fail-under=100` in `pyproject.toml`. No containers required — every
 backend is faked.
 
 - `tests/test_config.py`, `test_sql.py`, `test_s3.py`, `test_health.py`,
   `test_clients.py`, `test_schema_registry.py` — unit tests for the pure modules.
 - `tests/test_app.py`, `test_app_interactions.py` — full page rendering and
   button handlers via Streamlit's `AppTest` harness.
+- `tests/test_benchmark_*.py` — the benchmark suite's pure helpers: percentile
+  maths, thread slicing and warmup, host resolution, and Kafka's
+  advertised-listener check.
 
 ### Layout
 
@@ -150,6 +156,11 @@ homelab/
 │   └── dashboards/          # dashboard JSON, auto-loaded
 ├── generators/
 │   └── s3_data_generator.py # seed Floci with sample objects
+├── benchmark/               # throughput + latency, per service, by hostname
+│   ├── harness.py           # threading, timing, warmup, error capture
+│   ├── s3_bench.py
+│   ├── valkey_bench.py
+│   └── kafka_bench.py
 └── tests/
 ```
 
@@ -162,6 +173,28 @@ installed Streamlit package on `sys.path`.
 uv run python generators/s3_data_generator.py --bucket sample-data --objects 100
 ```
 
+### Benchmarking
+
+Measure throughput and latency percentiles for S3, Valkey and Kafka against any
+host running the stack:
+
+```sh
+make bench HOST=nas.local                    # all three
+make bench-valkey HOST=nas.local             # one service
+uv run python -m benchmark.kafka_bench --host nas.local --acks all --e2e
+uv run python -m benchmark --host nas.local --json --out today.json
+```
+
+Each run namespaces its data under a unique run id and afterwards deletes
+exactly the keys, objects and topic it created — nothing else is touched.
+`--keep` leaves it in place.
+
+Ports bind to `0.0.0.0` out of the box, so remote runs work as soon as Kafka
+knows its own name: set `KAFKA_ADVERTISED_HOST=<this host>` in `.env` and
+`make restart`. See
+[`benchmark/README.md`](benchmark/README.md) for the full flag reference and
+what each number means.
+
 ---
 
 ## 📦 Services
@@ -169,7 +202,7 @@ uv run python generators/s3_data_generator.py --bucket sample-data --objects 100
 | Service | Image | Port | Notes |
 |---|---|---|---|
 | Valkey | `valkey/valkey:9.1.1` | 6379 | Redis-compatible KV store |
-| Kafka | `confluentinc/cp-kafka:8.2.2` | 9092, 9094 | KRaft mode, no ZooKeeper |
+| Kafka | `confluentinc/cp-kafka:8.2.2` | 9092 | KRaft mode, no ZooKeeper |
 | Schema Registry | `confluentinc/cp-schema-registry:8.2.2` | 8081 | |
 | PostgreSQL | `postgres:18.4` | 5432 | |
 | Grafana | `grafana/grafana-oss:13.0.2` | 3000 | Provisioned datasource + dashboard |
@@ -271,6 +304,20 @@ config: `DOCKER_CONFIG=$(mktemp -d) make up`.
 
 **Kafka is unhealthy on first boot** — it can take ~30s to elect a controller.
 The healthcheck allows for this via `start_period`; give it a moment.
+
+**Kafka works locally but times out from another machine**
+
+After a client bootstraps, Kafka replies with the address to reconnect to, and
+that address has to resolve *for the client*. By default it is `localhost`, so
+a client on another host is sent to its own loopback and waits until it gives
+up. Set `KAFKA_ADVERTISED_HOST` to this machine's hostname in `.env` and
+`make restart`. `python -m benchmark.kafka_bench` detects this before doing any
+work and prints the fix.
+
+Clients on the host use the usual port 9092. Services *inside* compose use
+`kafka:29092` instead — a broker advertises one address per listener, and the
+name containers resolve is not one your laptop can, so there are two listeners
+on two ports. Only 9092 is published.
 
 **The dashboard shows services that no longer exist (Qdrant, MongoDB)**
 

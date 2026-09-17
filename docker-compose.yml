@@ -27,14 +27,23 @@ services:
     container_name: kafka
     ports:
       - "${BIND_ADDR:-0.0.0.0}:9092:9092"
-      - "${BIND_ADDR:-0.0.0.0}:9094:9094"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      # Two listeners because a broker advertises one address per listener, and
+      # the two audiences need different ones: containers resolve kafka:29092
+      # over the compose network, everyone else needs a routable host address.
+      # They cannot share a port, so the internal one takes the odd number and
+      # clients get the usual 9092.
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:9092
+      # The host listener binds 0.0.0.0, but a client is told where to reconnect
+      # after bootstrap, and that address must resolve *for the client*. Left as
+      # localhost, a client on another machine connects, is sent to its own
+      # loopback and times out. Set KAFKA_ADVERTISED_HOST to this host's name to
+      # reach Kafka from anywhere else on the network.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://${KAFKA_ADVERTISED_HOST:-localhost}:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -45,7 +54,7 @@ services:
       CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
     restart: unless-stopped
     healthcheck:
-      test: kafka-topics --bootstrap-server kafka:9092 --list || exit 1
+      test: kafka-topics --bootstrap-server kafka:29092 --list || exit 1
       interval: 15s
       timeout: 10s
       retries: 10
@@ -64,7 +73,7 @@ services:
       - "${BIND_ADDR:-0.0.0.0}:8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
     restart: unless-stopped
     healthcheck:
@@ -116,6 +125,9 @@ services:
       GF_DATABASE_PATH: /var/lib/grafana/grafana.db
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      # Grafana builds redirects and share links from this; the default sends
+      # anyone browsing from another machine back to their own localhost.
+      GF_SERVER_ROOT_URL: ${GRAFANA_PUBLIC_URL:-http://localhost:3000}
       # Interpolated into provisioning/datasources/postgres.yml at startup.
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -167,8 +179,10 @@ services:
       - floci-data:/app/data
     environment:
       # Floci embeds this hostname in response URLs; without it other
-      # containers get back "localhost" and cannot follow them.
-      FLOCI_HOSTNAME: floci
+      # containers get back "localhost" and cannot follow them. Override with
+      # FLOCI_HOSTNAME when clients outside the compose network need to follow
+      # them too.
+      FLOCI_HOSTNAME: ${FLOCI_HOSTNAME:-floci}
       FLOCI_STORAGE_MODE: persistent
       FLOCI_STORAGE_PERSISTENT_PATH: /app/data
     restart: unless-stopped
@@ -203,7 +217,7 @@ services:
     environment:
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SCHEMA_REGISTRY_HOST: schema-registry
       SCHEMA_REGISTRY_PORT: 8081
       POSTGRES_HOST: postgres

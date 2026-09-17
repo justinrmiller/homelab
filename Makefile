@@ -196,7 +196,29 @@ check: lint fmt-check typecheck test ## Run everything CI runs
 dev: ## Run the dashboard locally against localhost services
 	$(UV) run streamlit run dashboard/app.py
 
+# --- Benchmarks -----------------------------------------------------------
+# These talk to a host over the network, so they deliberately do not depend on
+# require-engine: benchmarking another machine needs no local container engine.
+
+HOST ?= localhost
+
+.PHONY: bench
+bench: ## Benchmark S3, Valkey and Kafka (HOST=name, BENCH_ARGS=...)
+	$(UV) run python -m benchmark --host $(HOST) $(BENCH_ARGS)
+
+.PHONY: bench-s3
+bench-s3: ## Benchmark the S3 endpoint only
+	$(UV) run python -m benchmark.s3_bench --host $(HOST) $(BENCH_ARGS)
+
+.PHONY: bench-valkey
+bench-valkey: ## Benchmark Valkey only
+	$(UV) run python -m benchmark.valkey_bench --host $(HOST) $(BENCH_ARGS)
+
+.PHONY: bench-kafka
+bench-kafka: ## Benchmark Kafka only
+	$(UV) run python -m benchmark.kafka_bench --host $(HOST) $(BENCH_ARGS)
+
 .PHONY: help
 help: ## List available targets
-	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'

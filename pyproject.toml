@@ -84,4 +84,4 @@ exclude_lines = [
 ]
 
 [tool.ty.src]
-include = ["dashboard", "tests", "generators"]
+include = ["dashboard", "tests", "generators", "benchmark"]

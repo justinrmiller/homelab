@@ -11,4 +11,5 @@ coverage.xml
 htmlcov
 tests
 generators
+benchmark
 LICENSE
